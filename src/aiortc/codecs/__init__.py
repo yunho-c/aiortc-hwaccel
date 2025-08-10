@@ -16,6 +16,15 @@ from .h264 import H264Decoder, H264Encoder, h264_depayload
 from .opus import OpusDecoder, OpusEncoder
 from .vpx import Vp8Decoder, Vp8Encoder, vp8_depayload
 
+VIDEO_DECODERS = {
+    "h264": H264Decoder,
+    "vp8": Vp8Decoder,
+}
+VIDEO_ENCODERS = {
+    "h264": H264Encoder,
+    "vp8": Vp8Encoder,
+}
+
 # The clockrate for G.722 is 8kHz even though the sampling rate is 16kHz.
 # See https://datatracker.ietf.org/doc/html/rfc3551
 G722_CODEC = RTCRtpCodecParameters(
@@ -148,7 +157,11 @@ def get_capabilities(kind: str) -> RTCRtpCapabilities:
 def get_decoder(codec: RTCRtpCodecParameters) -> Decoder:
     mimeType = codec.mimeType.lower()
 
-    if mimeType == "audio/g722":
+    if mimeType.startswith("video/"):
+        codec_name = mimeType.split("/")[1]
+        if codec_name in VIDEO_DECODERS:
+            return VIDEO_DECODERS[codec_name]()
+    elif mimeType == "audio/g722":
         return G722Decoder()
     elif mimeType == "audio/opus":
         return OpusDecoder()
@@ -156,18 +169,18 @@ def get_decoder(codec: RTCRtpCodecParameters) -> Decoder:
         return PcmaDecoder()
     elif mimeType == "audio/pcmu":
         return PcmuDecoder()
-    elif mimeType == "video/h264":
-        return H264Decoder()
-    elif mimeType == "video/vp8":
-        return Vp8Decoder()
-    else:
-        raise ValueError(f"No decoder found for MIME type `{mimeType}`")
+
+    raise ValueError(f"No decoder found for MIME type `{mimeType}`")
 
 
 def get_encoder(codec: RTCRtpCodecParameters) -> Encoder:
     mimeType = codec.mimeType.lower()
 
-    if mimeType == "audio/g722":
+    if mimeType.startswith("video/"):
+        codec_name = mimeType.split("/")[1]
+        if codec_name in VIDEO_ENCODERS:
+            return VIDEO_ENCODERS[codec_name]()
+    elif mimeType == "audio/g722":
         return G722Encoder()
     elif mimeType == "audio/opus":
         return OpusEncoder()
@@ -175,12 +188,8 @@ def get_encoder(codec: RTCRtpCodecParameters) -> Encoder:
         return PcmaEncoder()
     elif mimeType == "audio/pcmu":
         return PcmuEncoder()
-    elif mimeType == "video/h264":
-        return H264Encoder()
-    elif mimeType == "video/vp8":
-        return Vp8Encoder()
-    else:
-        raise ValueError(f"No encoder found for MIME type `{mimeType}`")
+
+    raise ValueError(f"No encoder found for MIME type `{mimeType}`")
 
 
 def is_rtx(codec: Union[RTCRtpCodecCapability, RTCRtpCodecParameters]) -> bool:

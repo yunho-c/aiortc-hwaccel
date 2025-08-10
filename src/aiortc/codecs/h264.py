@@ -122,11 +122,13 @@ class H264Decoder(Decoder):
 
 
 class H264Encoder(Encoder):
-    def __init__(self) -> None:
+    def __init__(self, codec_name: str = "libx264", options: Optional[dict] = None) -> None:
         self.buffer_data = b""
         self.buffer_pts: Optional[int] = None
         self.codec: Optional[VideoCodecContext] = None
         self.__target_bitrate = DEFAULT_BITRATE
+        self.codec_name = codec_name
+        self.codec_options = options or {}
 
     @staticmethod
     def _packetize_fu_a(data: bytes) -> list[bytes]:
@@ -267,18 +269,21 @@ class H264Encoder(Encoder):
             frame.pict_type = av.video.frame.PictureType.NONE
 
         if self.codec is None:
-            self.codec = av.CodecContext.create("libx264", "w")
+            self.codec = av.CodecContext.create(self.codec_name, "w")
             self.codec.width = frame.width
             self.codec.height = frame.height
             self.codec.bit_rate = self.target_bitrate
             self.codec.pix_fmt = "yuv420p"
             self.codec.framerate = fractions.Fraction(MAX_FRAME_RATE, 1)
             self.codec.time_base = fractions.Fraction(1, MAX_FRAME_RATE)
-            self.codec.options = {
+            options = {
                 "level": "31",
                 "tune": "zerolatency",
             }
-            self.codec.profile = "Baseline"
+            options.update(self.codec_options)
+            self.codec.options = options
+            if self.codec_name == "libx264":
+                self.codec.profile = "Baseline"
 
         data_to_send = b""
         for package in self.codec.encode(frame):

@@ -182,10 +182,12 @@ class Vp8Decoder(Decoder):
 
 
 class Vp8Encoder(Encoder):
-    def __init__(self) -> None:
+    def __init__(self, codec_name: str = "libvpx", options: Optional[dict] = None) -> None:
         self.codec: Optional[VideoCodecContext] = None
         self.picture_id = random.randint(0, (1 << 15) - 1)
         self.__target_bitrate = DEFAULT_BITRATE
+        self.codec_name = codec_name
+        self.codec_options = options or {}
 
     def encode(
         self, frame: Frame, force_keyframe: bool = False
@@ -208,7 +210,7 @@ class Vp8Encoder(Encoder):
             frame.pict_type = av.video.frame.PictureType.I
 
         if self.codec is None:
-            self.codec = av.CodecContext.create("libvpx", "w")
+            self.codec = av.CodecContext.create(self.codec_name, "w")
             self.codec.width = frame.width
             self.codec.height = frame.height
             self.codec.bit_rate = self.target_bitrate
@@ -216,7 +218,7 @@ class Vp8Encoder(Encoder):
             self.codec.gop_size = 3000  # kf_max_dist
             self.codec.qmin = 2  # rc_min_quantizer
             self.codec.qmax = 56  # rc_max_quantizer
-            self.codec.options = {
+            options = {
                 # We want rc_buf_sz = 1000 and FFmpeg sets:
                 #   rc_buf_sz =  bufsize * 1000 / bit_rate
                 "bufsize": str(self.__target_bitrate),
@@ -232,6 +234,8 @@ class Vp8Encoder(Encoder):
                 "static-thresh": "1",
                 "undershoot-pct": "100",
             }
+            options.update(self.codec_options)
+            self.codec.options = options
             self.codec.thread_count = number_of_threads(
                 frame.width * frame.height, multiprocessing.cpu_count()
             )
