@@ -2,28 +2,25 @@ import argparse
 import asyncio
 import logging
 import os
+import sys
 import uuid
 from pathlib import Path
 
 import av
 import numpy as np
+from aiortc import RTCPeerConnection, RTCRtpSender, RTCSessionDescription
+from aiortc.codecs.hw_accel import configure_hardware_acceleration
+from aiortc.contrib.media import MediaPlayer
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
-from aiortc import RTCPeerConnection, RTCSessionDescription
-from aiortc.contrib.media import MediaPlayer
-
-# Add the project root to the Python path
-ROOT = Path(__file__).parent.parent.parent
-import sys
-
-sys.path.append(str(ROOT / "src"))
-
-from aiortc.codecs.hw_accel import configure_hardware_acceleration
+# Set PyAV logging to debug level to get more verbose output
+av.logging.set_level(av.logging.DEBUG)
 
 # --- FastAPI app ---
 app = FastAPI()
 pcs = set()
+args = None
 # --- Video Generation ---
 WIDTH = 640
 HEIGHT = 480
@@ -106,8 +103,38 @@ async def offer(request: Request):
         log_info("Track %s received", track.kind)
 
     # add media track
+    video_sender = None
     if player.video:
-        pc.addTrack(player.video)
+        video_sender = pc.addTrack(player.video)
+
+    # set preferred codec if specified
+    if args.preferred_codec and video_sender:
+        log_info("Attempting to set preferred codec to %s", args.preferred_codec)
+        kind = player.video.kind
+        codecs = RTCRtpSender.getCapabilities(kind).codecs
+
+        preferred_codec_mime = args.preferred_codec.lower()
+        found_codec = next(
+            (c for c in codecs if c.mimeType.lower() == preferred_codec_mime), None
+        )
+
+        if found_codec:
+            other_codecs = [
+                c for c in codecs if c.mimeType.lower() != preferred_codec_mime
+            ]
+            ordered_codecs = [found_codec] + other_codecs
+
+            transceiver = next(t for t in pc.getTransceivers() if t.sender == video_sender)
+            transceiver.setCodecPreferences(ordered_codecs)
+            log_info(
+                "Successfully set codec preferences: %s",
+                [c.mimeType for c in ordered_codecs],
+            )
+        else:
+            log_info(
+                "Warning: Preferred codec %s not found in available codecs.",
+                args.preferred_codec,
+            )
 
     await pc.setRemoteDescription(offer)
     answer = await pc.createAnswer()
@@ -130,11 +157,17 @@ if __name__ == "__main__":
         type=str,
         help='Specify a hardware codec backend, e.g., "videotoolbox", "vaapi", "nvenc".',
     )
+    parser.add_argument(
+        "--preferred-codec",
+        type=str,
+        help='Specify a preferred video codec (e.g., "video/H264", "video/VP9").',
+    )
     parser.add_argument("--video-file", help="Path to a video file to serve.")
     parser.add_argument("--host", default="0.0.0.0", help="Host for HTTP server")
     parser.add_argument(
         "--port", type=int, default=8080, help="Port for HTTP server"
     )
+
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
