@@ -641,6 +641,12 @@ class RTCPeerConnection(AsyncIOEventEmitter):
             )
             transceiver._headerExtensions = HEADER_EXTENSIONS[transceiver.kind][:]
 
+            # Log chosen video codec
+            if transceiver.kind == "video" and transceiver._codecs:
+                primary_codec = next((c for c in transceiver._codecs if not is_rtx(c)), None)
+                if primary_codec:
+                    logger.debug(f"Chosen video codec for offer: {primary_codec.mimeType} (payload type {primary_codec.payloadType})")
+
         mids = self.__seenMids.copy()
 
         # create description
@@ -908,6 +914,12 @@ class RTCPeerConnection(AsyncIOEventEmitter):
                 transceiver._headerExtensions = find_common_header_extensions(
                     HEADER_EXTENSIONS[media.kind], media.rtp.headerExtensions
                 )
+
+                # Log chosen video codec after negotiation
+                if media.kind == "video" and transceiver._codecs:
+                    primary_codec = next((c for c in transceiver._codecs if not is_rtx(c)), None)
+                    if primary_codec:
+                        logger.debug(f"Negotiated video codec: {primary_codec.mimeType} (payload type {primary_codec.payloadType})")
 
                 # configure direction
                 direction = reverse_direction(media.direction)
